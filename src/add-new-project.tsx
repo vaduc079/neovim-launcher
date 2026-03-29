@@ -1,11 +1,4 @@
-import {
-  Action,
-  ActionPanel,
-  closeMainWindow,
-  Form,
-  showToast,
-  Toast,
-} from "@raycast/api";
+import { Action, ActionPanel, Form, showToast, Toast } from "@raycast/api";
 import { useState } from "react";
 
 import { saveManualProject } from "./project-store";
@@ -34,7 +27,6 @@ export default function Command() {
 
       toast.style = Toast.Style.Success;
       toast.title = `Saved ${values.name.trim()}`;
-      await closeMainWindow();
     } catch (error) {
       const projectError = toProjectError(error);
 

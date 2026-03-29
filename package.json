@@ -3,7 +3,7 @@
   "name": "neovim-launcher",
   "title": "Neovim Launcher",
   "description": "Open a configured project in Neovim inside WezTerm.",
-  "icon": "icon.png",
+  "icon": "neovim-launcher.png",
   "author": "vaduc079",
   "license": "MIT",
   "platforms": [
@@ -15,8 +15,7 @@
       "title": "Launch Project",
       "subtitle": "Neovim Launcher",
       "description": "Choose a project and open it in Neovim via WezTerm",
-      "mode": "view",
-      "icon": "icon.png"
+      "mode": "view"
     }
   ],
   "preferences": [
@@ -32,16 +31,14 @@
       "title": "WezTerm Executable",
       "description": "Executable name or absolute path for the WezTerm CLI.",
       "type": "textfield",
-      "required": false,
-      "default": "wezterm"
+      "required": false
     },
     {
       "name": "editorCommand",
       "title": "Editor Command",
       "description": "Executable name or absolute path for the editor to launch.",
       "type": "textfield",
-      "required": false,
-      "default": "nvim"
+      "required": false
     }
   ],
   "scripts": {

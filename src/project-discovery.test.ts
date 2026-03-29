@@ -21,13 +21,14 @@ afterEach(async () => {
 });
 
 describe("discoverProjects", () => {
-  it("finds primary git repositories and excludes linked worktree checkouts", async () => {
+  it("finds repository roots and excludes linked worktree and nested .git false positives", async () => {
     const workspaceRoot = await createTempDirectory();
     const alphaProjectPath = path.join(workspaceRoot, "alpha");
     const betaProjectPath = path.join(workspaceRoot, "nested", "beta");
     const worktreeProjectPath = path.join(workspaceRoot, "scratch", "linked");
 
     await createGitDirectoryProject(alphaProjectPath);
+    await createNestedGitDirectoryNoise(alphaProjectPath);
     await createSeparateGitDirectoryProject(betaProjectPath);
     await createLinkedWorktreeProject(worktreeProjectPath);
 
@@ -69,6 +70,15 @@ async function createTempDirectory(): Promise<string> {
 
 async function createGitDirectoryProject(projectPath: string): Promise<void> {
   await runGit(["init", projectPath]);
+}
+
+async function createNestedGitDirectoryNoise(
+  projectPath: string,
+): Promise<void> {
+  const nestedPath = path.join(projectPath, ".claude", ".git");
+
+  await fs.mkdir(nestedPath, { recursive: true });
+  await fs.writeFile(path.join(nestedPath, "config"), "[core]\n");
 }
 
 async function createSeparateGitDirectoryProject(

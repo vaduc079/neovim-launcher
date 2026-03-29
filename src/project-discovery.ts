@@ -15,6 +15,7 @@ const execFileAsync = promisify(execFile);
 const gitProjectKindArgs = [
   "rev-parse",
   "--path-format=absolute",
+  "--show-toplevel",
   "--git-dir",
   "--git-common-dir",
 ];
@@ -25,6 +26,11 @@ export type ProjectDiscoveryResult = {
 };
 
 type GitProjectKind = "none" | "repository" | "linked-worktree";
+type GitMetadataPaths = {
+  topLevel: string;
+  gitDir: string;
+  gitCommonDir: string;
+};
 
 export async function discoverProjects(
   searchRootInputs: string[],
@@ -115,10 +121,7 @@ async function collectProjects(
   }
 
   for (const entry of directoryEntries) {
-    const shouldSkipEntry =
-      entry.name === ".git" || !entry.isDirectory() || entry.isSymbolicLink();
-
-    if (shouldSkipEntry) continue;
+    if (!shouldTraverseDirectoryEntry(entry)) continue;
 
     await collectProjects(
       path.join(directoryPath, entry.name),
@@ -131,28 +134,18 @@ async function getGitProjectKind(
   directoryPath: string,
   directoryEntries: Dirent[],
 ): Promise<GitProjectKind> {
-  const hasGitEntry = directoryEntries.some(
-    (entry) => entry.name === ".git" && (entry.isDirectory() || entry.isFile()),
-  );
-
-  if (!hasGitEntry) {
-    return "none";
-  }
-
+  if (!hasGitEntry(directoryEntries)) return "none";
   const gitMetadataPaths = await readGitMetadataPaths(directoryPath);
+  if (gitMetadataPaths == null) return "none";
+  if (!isRepositoryRoot(directoryPath, gitMetadataPaths)) return "none";
+  if (isLinkedWorktree(gitMetadataPaths)) return "linked-worktree";
 
-  if (gitMetadataPaths == null) {
-    return "none";
-  }
-
-  return gitMetadataPaths.gitDir === gitMetadataPaths.gitCommonDir
-    ? "repository"
-    : "linked-worktree";
+  return "repository";
 }
 
 async function readGitMetadataPaths(
   directoryPath: string,
-): Promise<{ gitDir: string; gitCommonDir: string } | null> {
+): Promise<GitMetadataPaths | null> {
   try {
     const { stdout } = await execFileAsync("git", gitProjectKindArgs, {
       cwd: directoryPath,
@@ -162,14 +155,14 @@ async function readGitMetadataPaths(
       .split(/\r?\n/)
       .map((line) => line.trim())
       .filter(Boolean);
-    const gitDir = metadataPaths[0];
-    const gitCommonDir = metadataPaths[1];
+    const [topLevel, gitDir, gitCommonDir] = metadataPaths;
 
-    if (gitDir == null || gitCommonDir == null) {
+    if (topLevel == null || gitDir == null || gitCommonDir == null) {
       return null;
     }
 
     return {
+      topLevel: path.normalize(topLevel),
       gitDir: path.normalize(gitDir),
       gitCommonDir: path.normalize(gitCommonDir),
     };
@@ -190,6 +183,30 @@ async function readGitMetadataPaths(
       `Raycast could not inspect Git metadata for ${directoryPath}.`,
     );
   }
+}
+
+function shouldTraverseDirectoryEntry(entry: Dirent): boolean {
+  if (entry.name === ".git") return false;
+  if (!entry.isDirectory()) return false;
+
+  return !entry.isSymbolicLink();
+}
+
+function hasGitEntry(directoryEntries: Dirent[]): boolean {
+  return directoryEntries.some(
+    (entry) => entry.name === ".git" && (entry.isDirectory() || entry.isFile()),
+  );
+}
+
+function isRepositoryRoot(
+  directoryPath: string,
+  gitMetadataPaths: GitMetadataPaths,
+): boolean {
+  return gitMetadataPaths.topLevel === path.normalize(directoryPath);
+}
+
+function isLinkedWorktree(gitMetadataPaths: GitMetadataPaths): boolean {
+  return gitMetadataPaths.gitDir !== gitMetadataPaths.gitCommonDir;
 }
 
 async function readDirectoryEntries(directoryPath: string) {

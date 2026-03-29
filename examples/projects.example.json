@@ -1,0 +1,13 @@
+{
+  "projects": [
+    {
+      "name": "Dotfiles",
+      "path": "~/projects/dotfiles",
+      "description": "Shell, editor, and CLI configuration"
+    },
+    {
+      "name": "Neovim Config",
+      "path": "~/configs/nvim"
+    }
+  ]
+}

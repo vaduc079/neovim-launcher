@@ -1,0 +1,65 @@
+{
+  "$schema": "https://www.raycast.com/schemas/extension.json",
+  "name": "neovim-launcher",
+  "title": "Neovim Launcher",
+  "description": "Open a configured project in Neovim inside WezTerm.",
+  "icon": "icon.png",
+  "author": "vaduc079",
+  "license": "MIT",
+  "platforms": [
+    "macOS"
+  ],
+  "commands": [
+    {
+      "name": "launch-project",
+      "title": "Launch Project",
+      "subtitle": "Neovim Launcher",
+      "description": "Choose a project and open it in Neovim via WezTerm",
+      "mode": "view",
+      "icon": "icon.png"
+    }
+  ],
+  "preferences": [
+    {
+      "name": "projectConfigFile",
+      "title": "Project Config File",
+      "description": "Path to a JSON file that contains your project list.",
+      "type": "file",
+      "required": true
+    },
+    {
+      "name": "weztermExecutable",
+      "title": "WezTerm Executable",
+      "description": "Executable name or absolute path for the WezTerm CLI.",
+      "type": "textfield",
+      "required": false,
+      "default": "wezterm"
+    },
+    {
+      "name": "editorCommand",
+      "title": "Editor Command",
+      "description": "Executable name or absolute path for the editor to launch.",
+      "type": "textfield",
+      "required": false,
+      "default": "nvim"
+    }
+  ],
+  "scripts": {
+    "dev": "ray develop",
+    "build": "ray build",
+    "lint": "ray lint",
+    "fix-lint": "ray lint --fix",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@raycast/api": "1.104.11"
+  },
+  "devDependencies": {
+    "@raycast/eslint-config": "2.1.1",
+    "@types/node": "22.13.10",
+    "eslint": "10.1.0",
+    "prettier": "3.8.1",
+    "typescript": "6.0.2",
+    "vitest": "4.1.2"
+  }
+}

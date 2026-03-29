@@ -31,7 +31,6 @@ export type ProjectDiscoveryInput = {
   blacklistRoots: string[];
 };
 
-type GitProjectKind = "none" | "repository" | "linked-worktree";
 type GitMetadataPaths = {
   topLevel: string;
   gitDir: string;
@@ -46,7 +45,7 @@ export async function discoverProjects(
   const discoveredProjectPaths = new Set<string>();
 
   for (const searchRoot of searchRoots) {
-    await collectProjects(searchRoot, blacklistRoots, discoveredProjectPaths);
+    await scanDirectory(searchRoot, blacklistRoots, discoveredProjectPaths);
   }
 
   const projects = sortProjects(
@@ -144,37 +143,39 @@ async function ensureDirectoryExists(
   }
 }
 
-async function collectProjects(
+async function scanDirectory(
   directoryPath: string,
   blacklistRoots: string[],
   discoveredProjectPaths: Set<string>,
 ): Promise<void> {
-  if (isWithinBlacklistedTree(directoryPath, blacklistRoots)) {
+  if (isBlacklistedDirectory(directoryPath, blacklistRoots)) {
     return;
   }
 
   const directoryEntries = await readDirectoryEntries(directoryPath);
-  const gitProjectKind = await getGitProjectKind(
+  const isRepository = await isRepositoryDirectory(
     directoryPath,
     directoryEntries,
   );
 
-  if (gitProjectKind === "repository") {
+  if (isRepository) {
     discoveredProjectPaths.add(directoryPath);
   }
 
-  for (const entry of directoryEntries) {
-    if (!shouldTraverseDirectoryEntry(entry)) continue;
+  const childDirectoryPaths = directoryEntries
+    .filter(shouldTraverseDirectoryEntry)
+    .map((entry) => path.join(directoryPath, entry.name));
 
-    await collectProjects(
-      path.join(directoryPath, entry.name),
+  for (const childDirectoryPath of childDirectoryPaths) {
+    await scanDirectory(
+      childDirectoryPath,
       blacklistRoots,
       discoveredProjectPaths,
     );
   }
 }
 
-function isWithinBlacklistedTree(
+function isBlacklistedDirectory(
   directoryPath: string,
   blacklistRoots: string[],
 ): boolean {
@@ -190,17 +191,24 @@ function isWithinBlacklistedTree(
   });
 }
 
-async function getGitProjectKind(
+async function isRepositoryDirectory(
   directoryPath: string,
   directoryEntries: Dirent[],
-): Promise<GitProjectKind> {
-  if (!hasGitEntry(directoryEntries)) return "none";
-  const gitMetadataPaths = await readGitMetadataPaths(directoryPath);
-  if (gitMetadataPaths == null) return "none";
-  if (!isRepositoryRoot(directoryPath, gitMetadataPaths)) return "none";
-  if (isLinkedWorktree(gitMetadataPaths)) return "linked-worktree";
+): Promise<boolean> {
+  if (!hasGitEntry(directoryEntries)) {
+    return false;
+  }
 
-  return "repository";
+  const gitMetadataPaths = await readGitMetadataPaths(directoryPath);
+  if (gitMetadataPaths == null) {
+    return false;
+  }
+
+  if (!isRepositoryRoot(directoryPath, gitMetadataPaths)) {
+    return false;
+  }
+
+  return !isLinkedWorktree(gitMetadataPaths);
 }
 
 async function readGitMetadataPaths(

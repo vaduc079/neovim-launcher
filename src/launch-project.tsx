@@ -11,52 +11,68 @@ import {
 import { useEffect, useState } from "react";
 
 import { getResolvedPreferences } from "./preferences";
+import { getProjectCatalogState, ProjectCatalogState } from "./project-store";
 import {
   ensureProjectDirectory,
-  loadProjects,
   Project,
-  ProjectConfigError,
+  ProjectError,
+  toProjectError,
 } from "./projects";
+import { SearchRootsForm } from "./search-roots-form";
 import { createTerminalLauncher } from "./terminals";
 
-type LoadState = {
+type ViewState = {
   isLoading: boolean;
   projects: Project[];
-  error?: ProjectConfigError;
+  searchRoots: string[];
+  hasCompletedInitialDiscovery: boolean;
+  error?: ProjectError;
 };
 
-const exampleConfigPath = "examples/projects.example.json";
+const emptyViewDescription =
+  "Use Refresh Project List to rescan your folders, or Add New Project to save one manually.";
+const initialViewState: ViewState = {
+  isLoading: true,
+  projects: [],
+  searchRoots: [],
+  hasCompletedInitialDiscovery: false,
+};
 
 export default function Command() {
   const preferences = getResolvedPreferences();
-  const [loadState, setLoadState] = useState<LoadState>({
-    isLoading: true,
-    projects: [],
-  });
-  const [launchingProjectId, setLaunchingProjectId] = useState<string>();
+  const [viewState, setViewState] = useState<ViewState>(initialViewState);
+  const [launchingProjectPath, setLaunchingProjectPath] = useState<string>();
 
   useEffect(() => {
     let isCancelled = false;
 
-    async function loadProjectList() {
-      const nextLoadState = await getLoadState(preferences.projectConfigFile);
+    async function loadAndSetViewState() {
+      const nextViewState = await loadViewState();
       if (isCancelled) return;
 
-      setLoadState(nextLoadState);
+      setViewState(nextViewState);
     }
 
-    void loadProjectList();
+    void loadAndSetViewState();
 
     return () => {
       isCancelled = true;
     };
-  }, [preferences.projectConfigFile]);
+  }, []);
+
+  async function reloadProjectCatalog() {
+    setViewState((currentState) => toLoadingViewState(currentState));
+    setViewState(await loadViewState());
+  }
 
   async function handleLaunch(project: Project) {
-    if (launchingProjectId != null) return;
+    if (launchingProjectPath != null) return;
 
-    setLaunchingProjectId(project.id);
-    const toast = await showLoadingToast(project.name);
+    setLaunchingProjectPath(project.path);
+    const toast = await showToast({
+      style: Toast.Style.Animated,
+      title: `Opening ${project.name}`,
+    });
 
     try {
       await ensureProjectDirectory(project);
@@ -69,25 +85,44 @@ export default function Command() {
         editorCommand: preferences.editorCommand,
       });
 
-      showLaunchSuccess(toast, project.name);
+      toast.style = Toast.Style.Success;
+      toast.title = `Opened ${project.name}`;
       await closeMainWindow();
     } catch (error) {
-      showLaunchFailure(toast, error);
+      const projectError = toProjectError(error);
+
+      toast.style = Toast.Style.Failure;
+      toast.title = projectError.title;
+      toast.message = projectError.message;
     } finally {
-      setLaunchingProjectId(undefined);
+      setLaunchingProjectPath(undefined);
     }
   }
 
-  const isEmpty = !loadState.isLoading && loadState.projects.length === 0;
+  const shouldShowBootstrap =
+    !viewState.isLoading &&
+    !viewState.hasCompletedInitialDiscovery &&
+    viewState.error == null;
+
+  if (shouldShowBootstrap) {
+    return (
+      <SearchRootsForm
+        initialSearchRoots={viewState.searchRoots}
+        navigationTitle="Build Project List"
+        submitTitle="Build Project List"
+        onSaved={() => reloadProjectCatalog()}
+      />
+    );
+  }
 
   return (
     <List
-      isLoading={loadState.isLoading}
+      isLoading={viewState.isLoading}
       searchBarPlaceholder="Choose a project to open in Neovim"
     >
-      {loadState.projects.map((project) => (
+      {viewState.projects.map((project) => (
         <List.Item
-          key={project.id}
+          key={project.path}
           title={project.name}
           subtitle={project.path}
           icon={Icon.Terminal}
@@ -96,19 +131,16 @@ export default function Command() {
           }
           actions={
             <ProjectActions
-              isLaunching={launchingProjectId === project.id}
+              isLaunching={launchingProjectPath === project.path}
               onLaunch={() => void handleLaunch(project)}
             />
           }
         />
       ))}
-      {isEmpty ? (
+      {!viewState.isLoading && viewState.projects.length === 0 ? (
         <List.EmptyView
-          title={loadState.error?.title ?? "No Projects Found"}
-          description={
-            loadState.error?.message ??
-            `Update the Project Config File preference and use ${exampleConfigPath} as a starting point.`
-          }
+          title={viewState.error?.title ?? "No Projects Found"}
+          description={viewState.error?.message ?? emptyViewDescription}
           actions={
             <ActionPanel>
               <OpenPreferencesAction />
@@ -120,41 +152,39 @@ export default function Command() {
   );
 }
 
-async function getLoadState(projectConfigFile: string): Promise<LoadState> {
-  try {
-    const projects = await loadProjects(projectConfigFile);
+function toViewState(projectCatalogState: ProjectCatalogState): ViewState {
+  return {
+    isLoading: false,
+    projects: projectCatalogState.projects,
+    searchRoots: projectCatalogState.searchRoots,
+    hasCompletedInitialDiscovery:
+      projectCatalogState.hasCompletedInitialDiscovery,
+  };
+}
 
-    return {
-      isLoading: false,
-      projects,
-    };
+async function loadViewState(): Promise<ViewState> {
+  try {
+    const projectCatalogState = await getProjectCatalogState();
+    return toViewState(projectCatalogState);
   } catch (error) {
-    return {
-      isLoading: false,
-      projects: [],
-      error: toProjectConfigError(error),
-    };
+    return toErrorViewState(error);
   }
 }
 
-async function showLoadingToast(projectName: string) {
-  return showToast({
-    style: Toast.Style.Animated,
-    title: `Opening ${projectName}`,
-  });
+function toLoadingViewState(viewState: ViewState): ViewState {
+  return {
+    ...viewState,
+    isLoading: true,
+    error: undefined,
+  };
 }
 
-function showLaunchSuccess(toast: Toast, projectName: string) {
-  toast.style = Toast.Style.Success;
-  toast.title = `Opened ${projectName}`;
-}
-
-function showLaunchFailure(toast: Toast, error: unknown) {
-  const projectError = toProjectConfigError(error);
-
-  toast.style = Toast.Style.Failure;
-  toast.title = projectError.title;
-  toast.message = projectError.message;
+function toErrorViewState(error: unknown): ViewState {
+  return {
+    ...initialViewState,
+    isLoading: false,
+    error: toProjectError(error),
+  };
 }
 
 function ProjectActions(props: { isLaunching: boolean; onLaunch: () => void }) {
@@ -177,16 +207,5 @@ function OpenPreferencesAction() {
       icon={Icon.Gear}
       onAction={openExtensionPreferences}
     />
-  );
-}
-
-function toProjectConfigError(error: unknown): ProjectConfigError {
-  if (error instanceof ProjectConfigError) {
-    return error;
-  }
-
-  return new ProjectConfigError(
-    "Launch Failed",
-    error instanceof Error ? error.message : "Unknown error.",
   );
 }

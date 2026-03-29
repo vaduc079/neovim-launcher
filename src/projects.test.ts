@@ -3,63 +3,50 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { parseProjectConfig, ProjectConfigError } from "./projects";
+import {
+  createDetectedProject,
+  createManualProject,
+  mergeProjects,
+  ProjectError,
+} from "./projects";
 
-describe("parseProjectConfig", () => {
-  it("parses a top-level projects array", () => {
-    const rawConfig = JSON.stringify([
-      { name: "Alpha", path: "~/work/alpha" },
-      { name: "Beta", path: "./beta", description: "Second project" },
-    ]);
-    const configDirectory = "/tmp/projects";
-
-    const projects = parseProjectConfig(rawConfig, configDirectory);
-
-    expect(projects).toEqual([
-      {
-        id: path.join(os.homedir(), "work/alpha"),
-        name: "Alpha",
-        path: path.join(os.homedir(), "work/alpha"),
-      },
-      {
-        id: path.resolve(configDirectory, "beta"),
-        name: "Beta",
-        path: path.resolve(configDirectory, "beta"),
-        description: "Second project",
-      },
-    ]);
-  });
-
-  it("parses an object with a projects array", () => {
-    const rawConfig = JSON.stringify({
-      projects: [{ name: "Config", path: "/Users/duc.vu/configs" }],
+describe("createManualProject", () => {
+  it("normalizes manual project input", () => {
+    const project = createManualProject({
+      name: "  Alpha  ",
+      path: "~/projects/alpha",
+      description: "  Main repo  ",
     });
 
-    const projects = parseProjectConfig(rawConfig, "/tmp");
-
-    expect(projects).toEqual([
-      {
-        id: "/Users/duc.vu/configs",
-        name: "Config",
-        path: "/Users/duc.vu/configs",
-      },
-    ]);
+    expect(project).toEqual({
+      name: "Alpha",
+      path: path.join(os.homedir(), "projects/alpha"),
+      description: "Main repo",
+      source: "manual",
+    });
   });
 
-  it("rejects malformed config shapes", () => {
+  it("rejects relative project paths", () => {
     expect(() =>
-      parseProjectConfig(JSON.stringify({ invalid: [] }), "/tmp"),
-    ).toThrow(ProjectConfigError);
+      createManualProject({
+        name: "Alpha",
+        path: "./alpha",
+      }),
+    ).toThrow(ProjectError);
   });
+});
 
-  it("rejects duplicate project paths", () => {
-    const rawConfig = JSON.stringify([
-      { name: "One", path: "/tmp/app" },
-      { name: "Two", path: "/tmp/app" },
+describe("mergeProjects", () => {
+  it("prefers manual projects when paths overlap", () => {
+    const detectedProject = createDetectedProject("/tmp/project");
+    const manualProject = createManualProject({
+      name: "My Project",
+      path: "/tmp/project",
+      description: "Pinned",
+    });
+
+    expect(mergeProjects([detectedProject], [manualProject])).toEqual([
+      manualProject,
     ]);
-
-    expect(() => parseProjectConfig(rawConfig, "/tmp")).toThrow(
-      "duplicate project paths",
-    );
   });
 });

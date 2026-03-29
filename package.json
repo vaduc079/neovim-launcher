@@ -2,7 +2,7 @@
   "$schema": "https://www.raycast.com/schemas/extension.json",
   "name": "neovim-launcher",
   "title": "Neovim Launcher",
-  "description": "Open a configured project in Neovim inside WezTerm.",
+  "description": "Open a detected or saved project in Neovim inside WezTerm.",
   "icon": "neovim-launcher.png",
   "author": "vaduc079",
   "license": "MIT",
@@ -14,18 +14,25 @@
       "name": "launch-project",
       "title": "Launch Project",
       "subtitle": "Neovim Launcher",
-      "description": "Choose a project and open it in Neovim via WezTerm",
+      "description": "Choose a detected or saved project and open it in Neovim via WezTerm",
+      "mode": "view"
+    },
+    {
+      "name": "add-new-project",
+      "title": "Add New Project",
+      "subtitle": "Neovim Launcher",
+      "description": "Save a project manually so it appears in the launcher",
+      "mode": "view"
+    },
+    {
+      "name": "refresh-project-list",
+      "title": "Refresh Project List",
+      "subtitle": "Neovim Launcher",
+      "description": "Scan your configured folders again for Git projects",
       "mode": "view"
     }
   ],
   "preferences": [
-    {
-      "name": "projectConfigFile",
-      "title": "Project Config File",
-      "description": "Path to a JSON file that contains your project list.",
-      "type": "file",
-      "required": true
-    },
     {
       "name": "weztermExecutable",
       "title": "WezTerm Executable",

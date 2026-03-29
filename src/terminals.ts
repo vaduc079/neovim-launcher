@@ -1,4 +1,4 @@
-import { Project, ProjectConfigError } from "./projects";
+import { Project, ProjectError } from "./projects";
 import {
   CommandExecutionError,
   CommandRunner,
@@ -63,12 +63,12 @@ function toWezTermLaunchError(
     return createMissingWezTermError(weztermExecutable);
   }
 
-  if (error instanceof ProjectConfigError) {
+  if (error instanceof ProjectError) {
     return error;
   }
 
   if (error instanceof CommandExecutionError) {
-    return new ProjectConfigError(
+    return new ProjectError(
       "WezTerm Launch Failed",
       error.stderr.trim() ||
         error.stdout.trim() ||
@@ -76,16 +76,14 @@ function toWezTermLaunchError(
     );
   }
 
-  return new ProjectConfigError(
+  return new ProjectError(
     "WezTerm Launch Failed",
     `WezTerm failed while running ${weztermExecutable}.`,
   );
 }
 
-function createMissingWezTermError(
-  weztermExecutable: string,
-): ProjectConfigError {
-  return new ProjectConfigError(
+function createMissingWezTermError(weztermExecutable: string): ProjectError {
+  return new ProjectError(
     "WezTerm Not Found",
     `Raycast could not find the WezTerm executable at ${weztermExecutable}.`,
   );

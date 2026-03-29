@@ -5,9 +5,9 @@ import { CommandExecutionError, CommandRunner } from "./utils/process";
 import { buildWezTermStartArgs, createTerminalLauncher } from "./terminals";
 
 const project: Project = {
-  id: "/tmp/project",
   name: "Project",
   path: "/tmp/project",
+  source: "detected",
 };
 
 describe("wezterm argument builders", () => {

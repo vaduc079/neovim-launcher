@@ -39,6 +39,7 @@ describe("project-store", () => {
   it("marks initial discovery complete even when no projects are found", async () => {
     await saveDiscoveryResult({
       searchRoots: ["/tmp/work"],
+      blacklistRoots: ["/tmp/work/archive"],
       projects: [],
     });
 
@@ -46,6 +47,7 @@ describe("project-store", () => {
 
     expect(catalogState.hasCompletedInitialDiscovery).toBe(true);
     expect(catalogState.searchRoots).toEqual(["/tmp/work"]);
+    expect(catalogState.blacklistRoots).toEqual(["/tmp/work/archive"]);
     expect(catalogState.projects).toEqual([]);
     expect(catalogState.lastRefreshedAt).toBe("2026-03-29T12:00:00.000Z");
   });
@@ -53,6 +55,7 @@ describe("project-store", () => {
   it("merges detected and manual projects with manual precedence", async () => {
     await saveDiscoveryResult({
       searchRoots: ["/tmp/work"],
+      blacklistRoots: [],
       projects: [
         {
           name: "alpha",
@@ -93,5 +96,21 @@ describe("project-store", () => {
     ).rejects.toMatchObject({
       title: "Duplicate Project Path",
     });
+  });
+
+  it("treats missing stored blacklist folders as an empty list", async () => {
+    storage.set(
+      "project-discovery-state",
+      JSON.stringify({
+        searchRoots: ["/tmp/work"],
+        detectedProjects: [],
+        hasCompletedInitialDiscovery: true,
+        lastRefreshedAt: "2026-03-29T12:00:00.000Z",
+      }),
+    );
+
+    const catalogState = await getProjectCatalogState();
+
+    expect(catalogState.blacklistRoots).toEqual([]);
   });
 });

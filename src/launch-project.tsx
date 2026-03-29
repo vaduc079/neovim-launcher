@@ -25,6 +25,7 @@ type ViewState = {
   isLoading: boolean;
   projects: Project[];
   searchRoots: string[];
+  blacklistRoots: string[];
   hasCompletedInitialDiscovery: boolean;
   error?: ProjectError;
 };
@@ -35,6 +36,7 @@ const initialViewState: ViewState = {
   isLoading: true,
   projects: [],
   searchRoots: [],
+  blacklistRoots: [],
   hasCompletedInitialDiscovery: false,
 };
 
@@ -108,6 +110,7 @@ export default function Command() {
     return (
       <SearchRootsForm
         initialSearchRoots={viewState.searchRoots}
+        initialBlacklistRoots={viewState.blacklistRoots}
         navigationTitle="Build Project List"
         submitTitle="Build Project List"
         onSaved={() => reloadProjectCatalog()}
@@ -157,6 +160,7 @@ function toViewState(projectCatalogState: ProjectCatalogState): ViewState {
     isLoading: false,
     projects: projectCatalogState.projects,
     searchRoots: projectCatalogState.searchRoots,
+    blacklistRoots: projectCatalogState.blacklistRoots,
     hasCompletedInitialDiscovery:
       projectCatalogState.hasCompletedInitialDiscovery,
   };

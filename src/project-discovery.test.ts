@@ -32,9 +32,13 @@ describe("discoverProjects", () => {
     await createSeparateGitDirectoryProject(betaProjectPath);
     await createLinkedWorktreeProject(worktreeProjectPath);
 
-    const result = await discoverProjects([workspaceRoot, workspaceRoot]);
+    const result = await discoverProjects({
+      searchRoots: [workspaceRoot, workspaceRoot],
+      blacklistRoots: [],
+    });
 
     expect(result.searchRoots).toEqual([workspaceRoot]);
+    expect(result.blacklistRoots).toEqual([]);
     expect(result.projects).toEqual([
       {
         name: "alpha",
@@ -51,10 +55,44 @@ describe("discoverProjects", () => {
 
   it("rejects missing search roots", async () => {
     await expect(
-      discoverProjects(["/tmp/does-not-exist-raycast"]),
+      discoverProjects({
+        searchRoots: ["/tmp/does-not-exist-raycast"],
+        blacklistRoots: [],
+      }),
     ).rejects.toMatchObject({
       title: "Search Root Not Found",
     });
+  });
+
+  it("skips blacklisted folders and their nested repositories", async () => {
+    const workspaceRoot = await createTempDirectory();
+    const includedProjectPath = path.join(workspaceRoot, "alpha");
+    const blacklistedRoot = path.join(workspaceRoot, "archive");
+    const skippedProjectPath = path.join(blacklistedRoot, "beta");
+    const siblingProjectPath = path.join(workspaceRoot, "archive-copy");
+
+    await createGitDirectoryProject(includedProjectPath);
+    await createGitDirectoryProject(skippedProjectPath);
+    await createGitDirectoryProject(siblingProjectPath);
+
+    const result = await discoverProjects({
+      searchRoots: [workspaceRoot],
+      blacklistRoots: [blacklistedRoot],
+    });
+
+    expect(result.blacklistRoots).toEqual([blacklistedRoot]);
+    expect(result.projects).toEqual([
+      {
+        name: "alpha",
+        path: includedProjectPath,
+        source: "detected",
+      },
+      {
+        name: "archive-copy",
+        path: siblingProjectPath,
+        source: "detected",
+      },
+    ]);
   });
 });
 

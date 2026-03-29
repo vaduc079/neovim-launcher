@@ -22,7 +22,13 @@ const gitProjectKindArgs = [
 
 export type ProjectDiscoveryResult = {
   searchRoots: string[];
+  blacklistRoots: string[];
   projects: Project[];
+};
+
+export type ProjectDiscoveryInput = {
+  searchRoots: string[];
+  blacklistRoots: string[];
 };
 
 type GitProjectKind = "none" | "repository" | "linked-worktree";
@@ -33,13 +39,14 @@ type GitMetadataPaths = {
 };
 
 export async function discoverProjects(
-  searchRootInputs: string[],
+  input: ProjectDiscoveryInput,
 ): Promise<ProjectDiscoveryResult> {
-  const searchRoots = await resolveSearchRoots(searchRootInputs);
+  const searchRoots = await resolveSearchRoots(input.searchRoots);
+  const blacklistRoots = await resolveBlacklistRoots(input.blacklistRoots);
   const discoveredProjectPaths = new Set<string>();
 
   for (const searchRoot of searchRoots) {
-    await collectProjects(searchRoot, discoveredProjectPaths);
+    await collectProjects(searchRoot, blacklistRoots, discoveredProjectPaths);
   }
 
   const projects = sortProjects(
@@ -48,7 +55,7 @@ export async function discoverProjects(
     ),
   );
 
-  return { searchRoots, projects };
+  return { searchRoots, blacklistRoots, projects };
 }
 
 async function resolveSearchRoots(
@@ -61,15 +68,45 @@ async function resolveSearchRoots(
     );
   }
 
+  return resolveDirectoryList(
+    searchRootInputs,
+    "Search root",
+    "Search Root Not Found",
+    "Search Root Is Not a Directory",
+  );
+}
+
+async function resolveBlacklistRoots(
+  blacklistRootInputs: string[],
+): Promise<string[]> {
+  if (blacklistRootInputs.length === 0) {
+    return [];
+  }
+
+  return resolveDirectoryList(
+    blacklistRootInputs,
+    "Blacklist folder",
+    "Blacklist Folder Not Found",
+    "Blacklist Folder Is Not a Directory",
+  );
+}
+
+async function resolveDirectoryList(
+  directoryInputs: string[],
+  label: string,
+  missingTitle: string,
+  notDirectoryTitle: string,
+): Promise<string[]> {
   const normalizedRoots = new Set<string>();
 
-  for (const searchRootInput of searchRootInputs) {
-    const normalizedRoot = normalizeDirectoryPath(
-      searchRootInput,
-      "Search root",
-    );
+  for (const directoryInput of directoryInputs) {
+    const normalizedRoot = normalizeDirectoryPath(directoryInput, label);
 
-    await ensureDirectoryExists(normalizedRoot, "Search Root Not Found");
+    await ensureDirectoryExists(
+      normalizedRoot,
+      missingTitle,
+      notDirectoryTitle,
+    );
     normalizedRoots.add(normalizedRoot);
   }
 
@@ -79,6 +116,7 @@ async function resolveSearchRoots(
 async function ensureDirectoryExists(
   directoryPath: string,
   missingTitle: string,
+  notDirectoryTitle: string,
 ): Promise<void> {
   let stats;
 
@@ -100,7 +138,7 @@ async function ensureDirectoryExists(
 
   if (!stats.isDirectory()) {
     throw new ProjectError(
-      "Search Root Is Not a Directory",
+      notDirectoryTitle,
       `${directoryPath} is not a directory.`,
     );
   }
@@ -108,8 +146,13 @@ async function ensureDirectoryExists(
 
 async function collectProjects(
   directoryPath: string,
+  blacklistRoots: string[],
   discoveredProjectPaths: Set<string>,
 ): Promise<void> {
+  if (isWithinBlacklistedTree(directoryPath, blacklistRoots)) {
+    return;
+  }
+
   const directoryEntries = await readDirectoryEntries(directoryPath);
   const gitProjectKind = await getGitProjectKind(
     directoryPath,
@@ -125,9 +168,26 @@ async function collectProjects(
 
     await collectProjects(
       path.join(directoryPath, entry.name),
+      blacklistRoots,
       discoveredProjectPaths,
     );
   }
+}
+
+function isWithinBlacklistedTree(
+  directoryPath: string,
+  blacklistRoots: string[],
+): boolean {
+  return blacklistRoots.some((blacklistRoot) => {
+    const relativePath = path.relative(blacklistRoot, directoryPath);
+    const isSameDirectory = relativePath === "";
+    const isNestedDirectory =
+      relativePath !== ".." &&
+      !relativePath.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relativePath);
+
+    return isSameDirectory || isNestedDirectory;
+  });
 }
 
 async function getGitProjectKind(

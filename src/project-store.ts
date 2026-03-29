@@ -16,6 +16,7 @@ const manualProjectsStorageKey = "manual-projects";
 
 type StoredDiscoveryState = {
   searchRoots: string[];
+  blacklistRoots: string[];
   detectedProjects: Project[];
   hasCompletedInitialDiscovery: boolean;
   lastRefreshedAt?: string;
@@ -23,6 +24,7 @@ type StoredDiscoveryState = {
 
 export type ProjectCatalogState = {
   searchRoots: string[];
+  blacklistRoots: string[];
   projects: Project[];
   hasCompletedInitialDiscovery: boolean;
   lastRefreshedAt?: string;
@@ -36,6 +38,7 @@ export async function getProjectCatalogState(): Promise<ProjectCatalogState> {
 
   return {
     searchRoots: discoveryState?.searchRoots ?? [],
+    blacklistRoots: discoveryState?.blacklistRoots ?? [],
     projects,
     hasCompletedInitialDiscovery:
       discoveryState?.hasCompletedInitialDiscovery ?? false,
@@ -48,6 +51,7 @@ export async function saveDiscoveryResult(
 ): Promise<void> {
   const discoveryState: StoredDiscoveryState = {
     searchRoots: [...discoveryResult.searchRoots],
+    blacklistRoots: [...discoveryResult.blacklistRoots],
     detectedProjects: sortProjects(discoveryResult.projects),
     hasCompletedInitialDiscovery: true,
     lastRefreshedAt: new Date().toISOString(),
@@ -93,6 +97,11 @@ async function readDiscoveryState(): Promise<StoredDiscoveryState | undefined> {
   const searchRoots = parsedValue.searchRoots.map((searchRoot, index) =>
     readStoredString(searchRoot, `Search root ${index + 1}`),
   );
+  const blacklistRoots = Array.isArray(parsedValue.blacklistRoots)
+    ? parsedValue.blacklistRoots.map((blacklistRoot, index) =>
+        readStoredString(blacklistRoot, `Blacklist folder ${index + 1}`),
+      )
+    : [];
   const detectedProjects = readStoredProjects(
     parsedValue.detectedProjects,
     "detected",
@@ -101,6 +110,7 @@ async function readDiscoveryState(): Promise<StoredDiscoveryState | undefined> {
 
   return {
     searchRoots,
+    blacklistRoots,
     detectedProjects,
     hasCompletedInitialDiscovery:
       parsedValue.hasCompletedInitialDiscovery === true,

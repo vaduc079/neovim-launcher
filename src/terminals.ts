@@ -13,10 +13,6 @@ export type LaunchProjectRequest = {
   editorCommand: string;
 };
 
-export interface TerminalLauncher {
-  launchProject(request: LaunchProjectRequest): Promise<void>;
-}
-
 export type WezTermPaneRecord = {
   pane_id: number;
   cwd?: string;
@@ -25,21 +21,19 @@ export type WezTermPaneRecord = {
   title?: string;
 };
 
-export function createTerminalLauncher(
-  weztermExecutable: string,
-  commandRunner: CommandRunner = execFileRunner,
-): TerminalLauncher {
-  return new WezTermTerminalLauncher(weztermExecutable, commandRunner);
-}
-
 export function buildWezTermSpawnArgs(request: LaunchProjectRequest): string[] {
+  const shellLaunchConfig = resolveShellLaunchConfig();
+  const shellCommand = buildShellLaunchCommand(request.editorCommand);
+
   return [
     "cli",
     "spawn",
     "--cwd",
     request.project.path,
     "--",
-    request.editorCommand,
+    shellLaunchConfig.executable,
+    ...shellLaunchConfig.args,
+    shellCommand,
   ];
 }
 
@@ -55,71 +49,132 @@ export function buildMacOsActivateWezTermArgs(): string[] {
   return ["-a", "WezTerm"];
 }
 
-class WezTermTerminalLauncher implements TerminalLauncher {
+type ShellLaunchConfig = {
+  executable: string;
+  args: string[];
+};
+
+function resolveShellLaunchConfig(): ShellLaunchConfig {
+  const configuredShell = process.env.SHELL?.trim();
+  const executable =
+    configuredShell && configuredShell !== "" ? configuredShell : "/bin/zsh";
+  const shellName = path.basename(executable);
+
+  if (shellName === "zsh" || shellName === "bash") {
+    return {
+      executable,
+      args: ["-lic"],
+    };
+  }
+
+  return {
+    executable,
+    args: ["-c"],
+  };
+}
+
+function buildShellLaunchCommand(editorCommand: string): string {
+  return `exec ${quoteShellWord(editorCommand.trim())}`;
+}
+
+function quoteShellWord(value: string): string {
+  return `'${value.replaceAll("'", "'\\''")}'`;
+}
+
+export class WezTermLauncher {
   constructor(
     private readonly weztermExecutable: string,
-    private readonly commandRunner: CommandRunner,
+    private readonly commandRunner: CommandRunner = execFileRunner,
   ) {}
 
   async launchProject(request: LaunchProjectRequest): Promise<void> {
     try {
-      await launchOrReuseWezTermPane(
-        request,
-        this.weztermExecutable,
-        this.commandRunner,
-      );
-
-      await focusWezTermApp(this.commandRunner);
+      await this.launchOrReusePane(request);
+      await this.focusApp();
     } catch (error) {
       throw toWezTermLaunchError(error, this.weztermExecutable);
     }
   }
-}
 
-async function launchOrReuseWezTermPane(
-  request: LaunchProjectRequest,
-  weztermExecutable: string,
-  commandRunner: CommandRunner,
-): Promise<void> {
-  const reusablePaneId = await findReusablePaneId(
-    request,
-    weztermExecutable,
-    commandRunner,
-  );
+  private async launchOrReusePane(
+    request: LaunchProjectRequest,
+  ): Promise<void> {
+    const reusablePaneId = await this.findReusablePaneId(request);
 
-  if (reusablePaneId == null) {
-    await commandRunner.execute(
-      weztermExecutable,
-      buildWezTermSpawnArgs(request),
+    if (reusablePaneId == null) {
+      await this.commandRunner.execute(
+        this.weztermExecutable,
+        buildWezTermSpawnArgs(request),
+      );
+      return;
+    }
+
+    await this.commandRunner.execute(
+      this.weztermExecutable,
+      buildWezTermActivatePaneArgs(reusablePaneId),
     );
-    return;
   }
 
-  await commandRunner.execute(
-    weztermExecutable,
-    buildWezTermActivatePaneArgs(reusablePaneId),
-  );
-}
+  private async findReusablePaneId(
+    request: LaunchProjectRequest,
+  ): Promise<number | undefined> {
+    const paneList = await this.commandRunner.execute(
+      this.weztermExecutable,
+      buildWezTermListArgs(),
+    );
+    const panes = parseWezTermPaneList(paneList.stdout);
+    const projectPath = request.project.path;
+    const editorCommandBasename = path.basename(request.editorCommand.trim());
 
-async function findReusablePaneId(
-  request: LaunchProjectRequest,
-  weztermExecutable: string,
-  commandRunner: CommandRunner,
-): Promise<number | undefined> {
-  const paneList = await commandRunner.execute(
-    weztermExecutable,
-    buildWezTermListArgs(),
-  );
-  const panes = parseWezTermPaneList(paneList.stdout);
-  const projectPath = request.project.path;
-  const editorCommandBasename = path.basename(request.editorCommand.trim());
+    for (const pane of panes) {
+      const paneProjectPath = toPaneProjectPath(pane.cwd);
+      if (paneProjectPath !== projectPath) {
+        continue;
+      }
 
-  return await findMatchingPaneId(
-    panes,
-    projectPath,
-    editorCommandBasename,
-    commandRunner,
-  );
+      const foregroundCommandBasename = await this.getForegroundCommandBasename(
+        pane.tty_name ?? "",
+      );
+
+      if (foregroundCommandBasename !== editorCommandBasename) {
+        continue;
+      }
+
+      return pane.pane_id;
+    }
+
+    return undefined;
+  }
+
+  private async getForegroundCommandBasename(
+    ttyName: string,
+  ): Promise<string | undefined> {
+    const psTtyName = toPsTtyName(ttyName);
+    if (psTtyName == null) return undefined;
+
+    try {
+      const result = await this.commandRunner.execute("ps", [
+        "-t",
+        psTtyName,
+        "-o",
+        "state=",
+        "-o",
+        "comm=",
+      ]);
+
+      return parseForegroundCommandBasename(result.stdout);
+    } catch {
+      return undefined;
+    }
+  }
+
+  private async focusApp(): Promise<void> {
+    try {
+      await this.commandRunner.execute("open", buildMacOsActivateWezTermArgs());
+    } catch {
+      // Pane activation already succeeded; app activation is best-effort.
+    }
+  }
 }
 
 export function parseWezTermPaneList(stdout: string): WezTermPaneRecord[] {
@@ -139,37 +194,6 @@ export function parseWezTermPaneList(stdout: string): WezTermPaneRecord[] {
     return panes;
   } catch {
     return [];
-  }
-}
-
-async function getForegroundCommandBasename(
-  ttyName: string,
-  commandRunner: CommandRunner,
-): Promise<string | undefined> {
-  const psTtyName = toPsTtyName(ttyName);
-  if (psTtyName == null) return undefined;
-
-  try {
-    const result = await commandRunner.execute("ps", [
-      "-t",
-      psTtyName,
-      "-o",
-      "state=",
-      "-o",
-      "comm=",
-    ]);
-
-    return parseForegroundCommandBasename(result.stdout);
-  } catch {
-    return undefined;
-  }
-}
-
-async function focusWezTermApp(commandRunner: CommandRunner): Promise<void> {
-  try {
-    await commandRunner.execute("open", buildMacOsActivateWezTermArgs());
-  } catch {
-    // Pane activation already succeeded; app activation is best-effort.
   }
 }
 
@@ -211,31 +235,6 @@ function createMissingWezTermError(weztermExecutable: string): ProjectError {
     "WezTerm Not Found",
     `Raycast could not find the WezTerm executable at ${weztermExecutable}.`,
   );
-}
-
-async function findMatchingPaneId(
-  panes: WezTermPaneRecord[],
-  projectPath: string,
-  editorCommandBasename: string,
-  commandRunner: CommandRunner,
-): Promise<number | undefined> {
-  for (const pane of panes) {
-    const paneProjectPath = toPaneProjectPath(pane.cwd);
-    if (paneProjectPath !== projectPath) {
-      continue;
-    }
-
-    const foregroundCommandBasename = await getForegroundCommandBasename(
-      pane.tty_name ?? "",
-      commandRunner,
-    );
-
-    if (foregroundCommandBasename !== editorCommandBasename) continue;
-
-    return pane.pane_id;
-  }
-
-  return undefined;
 }
 
 function parseWezTermPaneRecord(value: unknown): WezTermPaneRecord | undefined {

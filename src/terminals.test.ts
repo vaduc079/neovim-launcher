@@ -9,7 +9,7 @@ import {
   buildWezTermActivatePaneArgs,
   buildWezTermListArgs,
   buildWezTermSpawnArgs,
-  createTerminalLauncher,
+  WezTermLauncher,
 } from "./terminals";
 
 const project: Project = {
@@ -20,12 +20,51 @@ const project: Project = {
 
 describe("wezterm argument builders", () => {
   it("builds the cli spawn arguments for the WezTerm launch flow", () => {
+    const shellArgs =
+      (process.env.SHELL ?? "/bin/zsh").endsWith("zsh") ||
+      (process.env.SHELL ?? "/bin/zsh").endsWith("bash")
+        ? ["-lic"]
+        : ["-c"];
+
     expect(
       buildWezTermSpawnArgs({
         project,
         editorCommand: "nvim",
       }),
-    ).toEqual(["cli", "spawn", "--cwd", "/tmp/project", "--", "nvim"]);
+    ).toEqual([
+      "cli",
+      "spawn",
+      "--cwd",
+      "/tmp/project",
+      "--",
+      process.env.SHELL ?? "/bin/zsh",
+      ...shellArgs,
+      "exec 'nvim'",
+    ]);
+  });
+
+  it("quotes editor commands before passing them to the login shell", () => {
+    const shellArgs =
+      (process.env.SHELL ?? "/bin/zsh").endsWith("zsh") ||
+      (process.env.SHELL ?? "/bin/zsh").endsWith("bash")
+        ? ["-lic"]
+        : ["-c"];
+
+    expect(
+      buildWezTermSpawnArgs({
+        project,
+        editorCommand: "/Applications/Neovim Nightly.app/Contents/MacOS/nvim",
+      }),
+    ).toEqual([
+      "cli",
+      "spawn",
+      "--cwd",
+      "/tmp/project",
+      "--",
+      process.env.SHELL ?? "/bin/zsh",
+      ...shellArgs,
+      "exec '/Applications/Neovim Nightly.app/Contents/MacOS/nvim'",
+    ]);
   });
 
   it("builds the cli list arguments for pane inspection", () => {
@@ -46,7 +85,13 @@ describe("wezterm argument builders", () => {
   });
 });
 
-describe("createTerminalLauncher", () => {
+describe("WezTermLauncher", () => {
+  const shellArgs =
+    (process.env.SHELL ?? "/bin/zsh").endsWith("zsh") ||
+    (process.env.SHELL ?? "/bin/zsh").endsWith("bash")
+      ? ["-lic"]
+      : ["-c"];
+
   it("activates an existing pane when cwd and foreground nvim both match", async () => {
     const commandRunner = createCommandRunner([
       {
@@ -109,7 +154,9 @@ describe("createTerminalLauncher", () => {
       "--cwd",
       "/tmp/project",
       "--",
-      "nvim",
+      process.env.SHELL ?? "/bin/zsh",
+      ...shellArgs,
+      "exec 'nvim'",
     ]);
     expect(commandRunner.execute).toHaveBeenNthCalledWith(4, "open", [
       "-a",
@@ -135,7 +182,9 @@ describe("createTerminalLauncher", () => {
       "--cwd",
       "/tmp/project",
       "--",
-      "nvim",
+      process.env.SHELL ?? "/bin/zsh",
+      ...shellArgs,
+      "exec 'nvim'",
     ]);
     expect(commandRunner.execute).toHaveBeenNthCalledWith(3, "open", [
       "-a",
@@ -211,7 +260,9 @@ describe("createTerminalLauncher", () => {
       "--cwd",
       "/tmp/project",
       "--",
-      "nvim",
+      process.env.SHELL ?? "/bin/zsh",
+      ...shellArgs,
+      "exec 'nvim'",
     ]);
     expect(commandRunner.execute).toHaveBeenNthCalledWith(3, "open", [
       "-a",
@@ -241,7 +292,7 @@ describe("createTerminalLauncher", () => {
 });
 
 async function launchProject(commandRunner: CommandRunner): Promise<void> {
-  const launcher = createTerminalLauncher("wezterm", commandRunner);
+  const launcher = new WezTermLauncher("wezterm", commandRunner);
 
   await launcher.launchProject({
     project,

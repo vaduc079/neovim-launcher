@@ -19,7 +19,7 @@ import {
   toProjectError,
 } from "./projects";
 import { SearchRootsForm } from "./search-roots-form";
-import { createTerminalLauncher } from "./terminals";
+import { WezTermLauncher } from "./terminals";
 
 type ViewState = {
   isLoading: boolean;
@@ -79,7 +79,7 @@ export default function Command() {
     try {
       await ensureProjectDirectory(project);
 
-      const terminalLauncher = createTerminalLauncher(
+      const terminalLauncher = new WezTermLauncher(
         preferences.weztermExecutable,
       );
       await terminalLauncher.launchProject({

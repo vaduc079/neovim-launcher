@@ -14,8 +14,7 @@ export function getResolvedPreferences(): ResolvedPreferences {
   const preferences = getPreferenceValues<ExtensionPreferences>();
   const weztermExecutable =
     preferences.weztermExecutable?.trim() || "/opt/homebrew/bin/wezterm";
-  const editorCommand =
-    preferences.editorCommand?.trim() || "/opt/homebrew/bin/nvim";
+  const editorCommand = preferences.editorCommand?.trim() || "nvim";
 
   return {
     weztermExecutable,
